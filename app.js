@@ -1,0 +1,698 @@
+// Initialize Lucide Icons
+lucide.createIcons();
+
+const app = {
+    db: null,
+    html5QrcodeScanner: null,
+    currentScanMode: 'IN', // 'IN' or 'OUT'
+    itemsCache: [], // Cache to avoid excessive reads
+
+    // User's Secure Firebase Config
+    firebaseConfig: {
+        apiKey: "AIzaSyBSkl-yp20QsOe1oaIDgiEGgiIMc6PhevA",
+        authDomain: "inventoriseveleo.firebaseapp.com",
+        projectId: "inventoriseveleo",
+        storageBucket: "inventoriseveleo.firebasestorage.app",
+        messagingSenderId: "25266480089",
+        appId: "1:25266480089:web:570d2a0afbc724b5beefc8"
+    },
+
+    init: function () {
+        this.setupNavigation();
+        this.initFirebase();
+        this.setupForms();
+        this.setupScanModeListeners();
+    },
+
+    setupNavigation: function () {
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const target = btn.getAttribute('data-target');
+                this.navigate(target);
+            });
+        });
+    },
+
+    navigate: function (viewId) {
+        // Update nav buttons
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.getAttribute('data-target') === viewId) {
+                btn.classList.add('active');
+            }
+        });
+
+        // Hide all views
+        document.querySelectorAll('.view').forEach(view => {
+            view.classList.remove('active');
+        });
+
+        // Show target view
+        document.getElementById(`view-${viewId}`).classList.add('active');
+
+        // Stop scanner if navigating away from scan view
+        if (viewId !== 'scan' && this.html5QrcodeScanner) {
+            this.stopScanner();
+        }
+
+        // View specific logic
+        switch (viewId) {
+            case 'dashboard':
+                this.loadDashboardData();
+                break;
+            case 'items':
+                this.loadItems();
+                break;
+            case 'scan':
+                this.startScanner();
+                break;
+            case 'reports':
+                this.loadReports();
+                break;
+            case 'settings':
+                // Settings view logic if any
+                break;
+        }
+    },
+
+    // --- FIREBASE LOGIC ---
+
+    initFirebase: function () {
+        try {
+            firebase.initializeApp(this.firebaseConfig);
+            this.db = firebase.firestore();
+            this.auth = firebase.auth();
+            console.log("Firebase initialized");
+
+            // Listen for auth state changes
+            this.auth.onAuthStateChanged((user) => {
+                if (user) {
+                    // User is signed in
+                    document.getElementById('login-container').classList.add('hidden');
+                    document.getElementById('app-container').classList.remove('hidden');
+
+                    // Initial load after login
+                    this.navigate('dashboard');
+                } else {
+                    // No user is signed in
+                    document.getElementById('app-container').classList.add('hidden');
+                    document.getElementById('login-container').classList.remove('hidden');
+                }
+            });
+        } catch (e) {
+            console.error("Firebase init error", e);
+            alert("Gagal koneksi ke database. Pastikan koneksi internet stabil.");
+        }
+    },
+
+    handleLogin: async function (e) {
+        e.preventDefault();
+        const email = document.getElementById('login-email').value;
+        const password = document.getElementById('login-password').value;
+        const btn = document.getElementById('btn-login');
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="lucide-loader"></i> Masuk...';
+
+        try {
+            await this.auth.signInWithEmailAndPassword(email, password);
+            this.showToast("Berhasil Login!");
+        } catch (error) {
+            console.error(error);
+            alert("Gagal Login: " + error.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = 'Login';
+        }
+    },
+
+    handleLogout: async function () {
+        if (confirm("Yakin ingin keluar?")) {
+            try {
+                await this.auth.signOut();
+                this.showToast("Berhasil Logout");
+            } catch (error) {
+                console.error(error);
+            }
+        }
+    },
+
+    // --- DASHBOARD ---
+
+    loadDashboardData: async function () {
+        try {
+            // Get all items for total
+            const itemsSnap = await this.db.collection('items').get();
+            let totalItems = 0;
+            itemsSnap.docs.forEach(doc => {
+                totalItems += parseInt(doc.data().stock || 0);
+            });
+            document.getElementById('stat-total-items').textContent = totalItems;
+
+            // Get transactions
+            const transSnap = await this.db.collection('transactions').get();
+            let inBulanIni = 0;
+            let outBulanIni = 0;
+
+            const now = new Date();
+            const currentMonth = now.getMonth();
+            const currentYear = now.getFullYear();
+
+            // Sort transactions by date desc for recent table
+            let transactions = transSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            transactions.forEach(t => {
+                const tDate = new Date(t.date);
+                if (tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear) {
+                    if (t.type === 'IN') inBulanIni += parseInt(t.qty);
+                    if (t.type === 'OUT') outBulanIni += parseInt(t.qty);
+                }
+            });
+
+            document.getElementById('stat-items-in').textContent = inBulanIni;
+            document.getElementById('stat-items-out').textContent = outBulanIni;
+
+            // Populate recent table
+            const tbody = document.querySelector('#recent-table tbody');
+            tbody.innerHTML = '';
+
+            if (transactions.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Belum ada transaksi</td></tr>';
+            } else {
+                transactions.slice(0, 5).forEach(t => {
+                    const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${new Date(t.date).toLocaleDateString('id-ID')}</td>
+                        <td><span class="${badgeClass}">${t.type}</span></td>
+                        <td>${t.itemName || t.itemId}</td>
+                        <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.type === 'IN' ? '+' : '-'}${t.qty}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+        } catch (e) {
+            console.error(e);
+        }
+    },
+
+    // --- ITEMS (MASTER DATA) ---
+
+    loadItems: async function () {
+        const container = document.getElementById('items-container');
+        container.innerHTML = '<div class="text-center text-muted w-full py-8">Memuat data...</div>';
+
+        try {
+            const snap = await this.db.collection('items').get();
+            this.itemsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            this.renderItems(this.itemsCache);
+        } catch (e) {
+            console.error(e);
+            container.innerHTML = '<div class="text-center text-danger w-full py-8">Gagal memuat data</div>';
+        }
+    },
+
+    renderItems: function (items) {
+        const container = document.getElementById('items-container');
+        container.innerHTML = '';
+
+        if (items.length === 0) {
+            container.innerHTML = '<div class="text-center text-muted w-full py-8">Belum ada barang. Silakan tambah barang baru.</div>';
+            return;
+        }
+
+        items.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'item-card glass-card';
+            div.innerHTML = `
+                <div class="item-header">
+                    <div>
+                        <div class="item-id">${item.id}</div>
+                        <h3 class="item-name">${item.name}</h3>
+                        <p class="item-price">Jual: Rp ${this.formatRp(item.price)}</p>
+                    </div>
+                    <div class="item-stock text-right">
+                        <div>${item.stock}</div>
+                        <div class="text-xs text-muted">Stok</div>
+                    </div>
+                </div>
+                <div class="item-actions">
+                    <button class="btn-secondary text-sm" onclick="app.openPrintModal('${item.id}', '${item.name}', '${item.price}')">
+                        <i data-lucide="printer" class="w-4 h-4"></i> Print
+                    </button>
+                    <button class="btn-secondary text-sm" onclick="app.openEditModal('${item.id}')">
+                        <i data-lucide="edit-2" class="w-4 h-4"></i> Edit
+                    </button>
+                </div>
+            `;
+            container.appendChild(div);
+        });
+        lucide.createIcons();
+    },
+
+    filterItems: function () {
+        const q = document.getElementById('search-item').value.toLowerCase();
+        const filtered = this.itemsCache.filter(item =>
+            item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q)
+        );
+        this.renderItems(filtered);
+    },
+
+    setupForms: function () {
+        // Add Item Form
+        document.getElementById('form-add-item').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-item');
+            btn.disabled = true;
+            btn.textContent = "Menyimpan...";
+
+            const name = document.getElementById('input-item-name').value;
+            const cost = document.getElementById('input-item-cost').value;
+            const price = document.getElementById('input-item-price').value;
+            const stock = document.getElementById('input-item-stock').value;
+
+            const id = 'BRG-' + Math.floor(1000 + Math.random() * 9000); // Generate simple ID
+
+            try {
+                await this.db.collection('items').doc(id).set({
+                    name: name,
+                    cost: parseInt(cost),
+                    price: parseInt(price),
+                    stock: parseInt(stock),
+                    createdAt: new Date().toISOString()
+                });
+                this.showToast("Barang berhasil ditambahkan");
+                this.closeModal('modal-add-item');
+                e.target.reset();
+                this.loadItems();
+            } catch (error) {
+                console.error(error);
+                alert("Gagal menyimpan data");
+            } finally {
+                btn.disabled = false;
+                btn.textContent = "Simpan";
+            }
+        });
+
+        // Edit Item Form
+        document.getElementById('form-edit-item').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-item-id').value;
+            const name = document.getElementById('edit-item-name').value;
+            const cost = document.getElementById('edit-item-cost').value;
+            const price = document.getElementById('edit-item-price').value;
+
+            try {
+                await this.db.collection('items').doc(id).update({
+                    name: name,
+                    cost: parseInt(cost),
+                    price: parseInt(price)
+                });
+                this.showToast("Barang diupdate");
+                this.closeModal('modal-edit-item');
+                this.loadItems();
+            } catch (error) {
+                console.error(error);
+                alert("Gagal update data");
+            }
+        });
+
+        // Transaction Form (Manual or post-scan)
+        document.getElementById('form-transaction').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const itemId = document.getElementById('transaction-item-id').value;
+            const type = document.getElementById('transaction-type').value;
+            const qty = parseInt(document.getElementById('transaction-qty').value);
+            const note = document.getElementById('transaction-note').value;
+
+            await this.processTransaction(itemId, type, qty, note);
+            this.closeModal('modal-transaction');
+            document.getElementById('form-transaction').reset();
+
+            // Resume scanner if in scan view
+            if (document.getElementById('view-scan').classList.contains('active')) {
+                if (this.html5QrcodeScanner) {
+                    this.html5QrcodeScanner.resume();
+                }
+            }
+        });
+
+        // Manual Barcode Entry
+        document.getElementById('form-manual-entry').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const barcode = document.getElementById('manual-barcode-input').value;
+            if (barcode) {
+                this.handleBarcodeScan(barcode);
+                document.getElementById('manual-barcode-input').value = '';
+            }
+        });
+
+        // Print Button
+        document.getElementById('btn-do-print').addEventListener('click', () => {
+            this.executePrint();
+        });
+    },
+
+    openEditModal: function (id) {
+        const item = this.itemsCache.find(i => i.id === id);
+        if (!item) return;
+
+        document.getElementById('edit-item-id').value = item.id;
+        document.getElementById('edit-item-name').value = item.name;
+        document.getElementById('edit-item-cost').value = item.cost;
+        document.getElementById('edit-item-price').value = item.price;
+
+        this.showModal('modal-edit-item');
+    },
+
+    deleteItem: async function () {
+        const id = document.getElementById('edit-item-id').value;
+        if (confirm("Yakin ingin menghapus barang ini?")) {
+            try {
+                await this.db.collection('items').doc(id).delete();
+                this.showToast("Barang dihapus");
+                this.closeModal('modal-edit-item');
+                this.loadItems();
+            } catch (e) {
+                alert("Gagal menghapus");
+            }
+        }
+    },
+
+    // --- SCANNER ---
+
+    setupScanModeListeners: function () {
+        document.querySelectorAll('input[name="scanMode"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                this.currentScanMode = e.target.value;
+            });
+        });
+    },
+
+    startScanner: function () {
+        if (this.html5QrcodeScanner) return; // already running
+
+        // Ensure we have latest items cached for fast lookups
+        this.db.collection('items').get().then(snap => {
+            this.itemsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        });
+
+        this.html5QrcodeScanner = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+        this.html5QrcodeScanner.start(
+            { facingMode: "environment" },
+            config,
+            (decodedText, decodedResult) => {
+                // Pause scanner to prevent multiple triggers
+                if (this.html5QrcodeScanner.getState() === 2) { // 2 = SCANNING
+                    this.html5QrcodeScanner.pause(true);
+                }
+                this.handleBarcodeScan(decodedText);
+            },
+            (errorMessage) => {
+                // parse error, ignore mostly
+            }
+        ).catch(err => {
+            console.error("Failed to start scanner", err);
+            document.getElementById('reader-container').innerHTML = `
+                <div class="p-4 text-center text-danger bg-red-900 bg-opacity-20 rounded-lg h-full flex items-center justify-center">
+                    Gagal mengakses kamera. Pastikan browser memiliki izin kamera.
+                </div>
+            `;
+        });
+    },
+
+    stopScanner: function () {
+        if (this.html5QrcodeScanner) {
+            this.html5QrcodeScanner.stop().then(() => {
+                this.html5QrcodeScanner = null;
+            }).catch(err => console.log(err));
+        }
+    },
+
+    handleBarcodeScan: function (barcode) {
+        // Find item in cache
+        const item = this.itemsCache.find(i => i.id === barcode);
+
+        if (!item) {
+            alert(`Barang dengan ID ${barcode} tidak ditemukan!`);
+            if (this.html5QrcodeScanner) this.html5QrcodeScanner.resume();
+            return;
+        }
+
+        // Open Transaction Modal
+        document.getElementById('transaction-title').textContent = this.currentScanMode === 'IN' ? 'Barang Masuk' : 'Barang Keluar';
+        document.getElementById('transaction-title').className = this.currentScanMode === 'IN' ? 'text-green-500 font-bold' : 'text-red-500 font-bold';
+
+        document.getElementById('transaction-item-name').textContent = item.name;
+        document.getElementById('transaction-item-stock').textContent = item.stock;
+
+        document.getElementById('transaction-item-id').value = item.id;
+        document.getElementById('transaction-type').value = this.currentScanMode;
+        document.getElementById('transaction-qty').value = 1;
+        document.getElementById('transaction-note').value = '';
+
+        this.showModal('modal-transaction');
+    },
+
+    processTransaction: async function (itemId, type, qty, note) {
+        const item = this.itemsCache.find(i => i.id === itemId);
+        if (!item) return;
+
+        let newStock = item.stock;
+        if (type === 'IN') {
+            newStock += qty;
+        } else {
+            if (newStock < qty) {
+                alert("Stok tidak mencukupi!");
+                return;
+            }
+            newStock -= qty;
+        }
+
+        try {
+            // Update stock
+            await this.db.collection('items').doc(itemId).update({ stock: newStock });
+
+            // Record transaction
+            await this.db.collection('transactions').add({
+                itemId: itemId,
+                itemName: item.name,
+                type: type,
+                qty: qty,
+                note: note,
+                date: new Date().toISOString()
+            });
+
+            // Update cache
+            item.stock = newStock;
+
+            this.showToast(`Transaksi berhasil: ${type} ${qty} ${item.name}`);
+        } catch (e) {
+            console.error(e);
+            alert("Gagal memproses transaksi");
+        }
+    },
+
+    // --- BLUETOOTH PRINTING ---
+
+    currentPrintData: null,
+
+    openPrintModal: function (id, name, price) {
+        document.getElementById('print-item-name').textContent = name;
+        document.getElementById('print-item-id').textContent = id;
+        document.getElementById('print-item-price').textContent = `Rp ${this.formatRp(price)}`;
+
+        // Generate Barcode SVG
+        JsBarcode("#print-barcode-svg", id, {
+            format: "CODE128",
+            displayValue: true,
+            fontSize: 16,
+            height: 50,
+            background: "#ffffff",
+            lineColor: "#000000",
+            margin: 0
+        });
+
+        this.currentPrintData = { id, name, price };
+        this.showModal('modal-print');
+    },
+
+    executePrint: async function () {
+        if (!navigator.bluetooth) {
+            alert("Web Bluetooth API tidak didukung di browser ini. Gunakan Chrome di Android.");
+            return;
+        }
+
+        const btn = document.getElementById('btn-do-print');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="lucide-loader"></i> Menghubungkan...';
+        btn.disabled = true;
+
+        try {
+            // Request device
+            const device = await navigator.bluetooth.requestDevice({
+                filters: [{ services: ['000018f0-0000-1000-8000-00805f9b34fb'] }],
+                optionalServices: ['e7810a71-73ae-499d-8c15-faa9aef0c3f2'] // Generic SPP
+            }).catch(e => {
+                // If specific service filter fails, try generic acceptAll
+                return navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+                });
+            });
+
+            const server = await device.gatt.connect();
+
+            // Find appropriate service and characteristic (ESC/POS typical)
+            const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+            const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb'); // Write without response
+
+            // Prepare ESC/POS Data
+            // This is a very simplified ESC/POS generation for demo.
+            // Real printing of barcode requires specific ESC/POS barcode commands.
+            const encoder = new TextEncoder();
+
+            // Initialize printer: ESC @
+            let data = new Uint8Array([0x1B, 0x40]);
+            await characteristic.writeValue(data);
+
+            // Text Name
+            let text = `${this.currentPrintData.name}\nRp ${this.formatRp(this.currentPrintData.price)}\nID: ${this.currentPrintData.id}\n\n\n`;
+            await characteristic.writeValue(encoder.encode(text));
+
+            this.showToast("Berhasil mencetak");
+            this.closeModal('modal-print');
+
+        } catch (error) {
+            console.error(error);
+            alert("Gagal koneksi ke printer: " + error.message);
+        } finally {
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+    },
+
+    testPrinter: function () {
+        this.currentPrintData = { name: "Test Printer", price: 1000, id: "TEST-123" };
+        this.executePrint();
+    },
+
+    // --- REPORTS ---
+
+    loadReports: async function () {
+        const tbody = document.querySelector('#reports-table tbody');
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Memuat data...</td></tr>';
+
+        try {
+            const snap = await this.db.collection('transactions').orderBy('date', 'desc').limit(100).get();
+            tbody.innerHTML = '';
+
+            if (snap.docs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Belum ada transaksi</td></tr>';
+                return;
+            }
+
+            snap.docs.forEach(doc => {
+                const t = doc.data();
+                const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="font-mono text-xs">${doc.id.substring(0, 8)}</td>
+                    <td>${new Date(t.date).toLocaleString('id-ID')}</td>
+                    <td><span class="${badgeClass}">${t.type}</span></td>
+                    <td>${t.itemName} <br><span class="text-xs text-muted font-mono">${t.itemId}</span></td>
+                    <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.qty}</td>
+                    <td class="text-sm">${t.note || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (e) {
+            console.error(e);
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Gagal memuat data</td></tr>';
+        }
+    },
+
+    exportCSV: async function () {
+        try {
+            const snap = await this.db.collection('transactions').orderBy('date', 'desc').get();
+            let csvContent = "ID Transaksi,Tanggal,Jenis,ID Barang,Nama Barang,Jumlah,Keterangan\n";
+
+            snap.docs.forEach(doc => {
+                const t = doc.data();
+                const row = [
+                    doc.id,
+                    new Date(t.date).toLocaleString('id-ID'),
+                    t.type,
+                    t.itemId,
+                    t.itemName,
+                    t.qty,
+                    `"${t.note || ''}"`
+                ].join(",");
+                csvContent += row + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Laporan_Inventoris_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            this.showToast("CSV Berhasil di-download");
+        } catch (e) {
+            console.error(e);
+            alert("Gagal export CSV");
+        }
+    },
+
+    executeTutupBuku: async function () {
+        if (!confirm("YAKIN INGIN MENGHAPUS SEMUA TRANSAKSI SEBELUMNYA? Pastikan sudah di-backup/export.")) return;
+
+        try {
+            // Delete all transactions (simplified batch delete)
+            const snap = await this.db.collection('transactions').get();
+            const batchPromises = snap.docs.map(doc => this.db.collection('transactions').doc(doc.id).delete());
+            await Promise.all(batchPromises);
+
+            this.showToast("Buku berhasil ditutup. Riwayat dikosongkan.");
+            this.closeModal('modal-tutup-buku');
+            this.loadReports();
+        } catch (e) {
+            console.error(e);
+            alert("Gagal melakukan tutup buku");
+        }
+    },
+
+    // --- UTILITIES ---
+
+    showModal: function (id) {
+        document.getElementById(id).classList.add('show');
+    },
+
+    closeModal: function (id) {
+        document.getElementById(id).classList.remove('show');
+    },
+
+    showToast: function (msg) {
+        const toast = document.getElementById('toast');
+        document.getElementById('toast-message').textContent = msg;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+    },
+
+    formatRp: function (num) {
+        return new Intl.NumberFormat('id-ID').format(num);
+    }
+};
+
+// Start app when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    app.init();
+});
