@@ -6,6 +6,8 @@ const app = {
     html5QrcodeScanner: null,
     currentScanMode: 'IN', // 'IN' or 'OUT'
     itemsCache: [], // Cache to avoid excessive reads
+    transactionsCache: [],
+    listenersInitialized: false,
 
     // User's Secure Firebase Config
     firebaseConfig: {
@@ -92,6 +94,9 @@ const app = {
                     document.getElementById('login-container').classList.add('hidden');
                     document.getElementById('app-container').classList.remove('hidden');
 
+                    // Setup realtime listeners
+                    this.setupRealtimeListeners();
+
                     // Initial load after login
                     this.navigate('dashboard');
                 } else {
@@ -134,87 +139,112 @@ const app = {
             try {
                 await this.auth.signOut();
                 this.showToast("Berhasil Logout");
+                // Reset listener init flag on logout
+                this.listenersInitialized = false;
             } catch (error) {
                 console.error(error);
             }
         }
     },
 
+    setupRealtimeListeners: function () {
+        if (this.listenersInitialized) return;
+        this.listenersInitialized = true;
+
+        // Listen to items collection
+        this.db.collection('items').onSnapshot((snap) => {
+            this.itemsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            
+            // Re-render items view if currently active
+            if (document.getElementById('view-items').classList.contains('active')) {
+                this.renderItems(this.itemsCache);
+            }
+            
+            // Re-render dashboard statistics
+            this.updateDashboardStats();
+        }, (error) => {
+            console.error("Realtime items error:", error);
+        });
+
+        // Listen to transactions collection
+        this.db.collection('transactions').onSnapshot((snap) => {
+            this.transactionsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            this.transactionsCache.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+            // Re-render dashboard recent transactions table
+            this.updateDashboardTransactions();
+
+            // Re-render reports view if currently active
+            if (document.getElementById('view-reports').classList.contains('active')) {
+                this.loadReports();
+            }
+        }, (error) => {
+            console.error("Realtime transactions error:", error);
+        });
+    },
+
     // --- DASHBOARD ---
 
-    loadDashboardData: async function () {
-        try {
-            // Get all items for total
-            const itemsSnap = await this.db.collection('items').get();
-            let totalItems = 0;
-            itemsSnap.docs.forEach(doc => {
-                totalItems += parseInt(doc.data().stock || 0);
-            });
-            document.getElementById('stat-total-items').textContent = totalItems;
+    loadDashboardData: function () {
+        this.updateDashboardStats();
+        this.updateDashboardTransactions();
+    },
 
-            // Get transactions
-            const transSnap = await this.db.collection('transactions').get();
-            let inBulanIni = 0;
-            let outBulanIni = 0;
+    updateDashboardStats: function () {
+        let totalItems = 0;
+        this.itemsCache.forEach(item => {
+            totalItems += parseInt(item.stock || 0);
+        });
+        const statTotal = document.getElementById('stat-total-items');
+        if (statTotal) statTotal.textContent = totalItems;
 
-            const now = new Date();
-            const currentMonth = now.getMonth();
-            const currentYear = now.getFullYear();
+        let inBulanIni = 0;
+        let outBulanIni = 0;
 
-            // Sort transactions by date desc for recent table
-            let transactions = transSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            transactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
 
-            transactions.forEach(t => {
-                const tDate = new Date(t.date);
-                if (tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear) {
-                    if (t.type === 'IN') inBulanIni += parseInt(t.qty);
-                    if (t.type === 'OUT') outBulanIni += parseInt(t.qty);
-                }
-            });
-
-            document.getElementById('stat-items-in').textContent = inBulanIni;
-            document.getElementById('stat-items-out').textContent = outBulanIni;
-
-            // Populate recent table
-            const tbody = document.querySelector('#recent-table tbody');
-            tbody.innerHTML = '';
-
-            if (transactions.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Belum ada transaksi</td></tr>';
-            } else {
-                transactions.slice(0, 5).forEach(t => {
-                    const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
-                    const tr = document.createElement('tr');
-                    tr.innerHTML = `
-                        <td>${new Date(t.date).toLocaleDateString('id-ID')}</td>
-                        <td><span class="${badgeClass}">${t.type}</span></td>
-                        <td>${t.itemName || t.itemId}</td>
-                        <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.type === 'IN' ? '+' : '-'}${t.qty}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+        this.transactionsCache.forEach(t => {
+            const tDate = new Date(t.date);
+            if (tDate.getMonth() === currentMonth && tDate.getFullYear() === currentYear) {
+                if (t.type === 'IN') inBulanIni += parseInt(t.qty);
+                if (t.type === 'OUT') outBulanIni += parseInt(t.qty);
             }
+        });
 
-        } catch (e) {
-            console.error(e);
+        const statIn = document.getElementById('stat-items-in');
+        const statOut = document.getElementById('stat-items-out');
+        if (statIn) statIn.textContent = inBulanIni;
+        if (statOut) statOut.textContent = outBulanIni;
+    },
+
+    updateDashboardTransactions: function () {
+        const tbody = document.querySelector('#recent-table tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        if (this.transactionsCache.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Belum ada transaksi</td></tr>';
+        } else {
+            this.transactionsCache.slice(0, 5).forEach(t => {
+                const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${new Date(t.date).toLocaleDateString('id-ID')}</td>
+                    <td><span class="${badgeClass}">${t.type}</span></td>
+                    <td>${t.itemName || t.itemId}</td>
+                    <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.type === 'IN' ? '+' : '-'}${t.qty}</td>
+                `;
+                tbody.appendChild(tr);
+            });
         }
     },
 
     // --- ITEMS (MASTER DATA) ---
 
-    loadItems: async function () {
-        const container = document.getElementById('items-container');
-        container.innerHTML = '<div class="text-center text-muted w-full py-8">Memuat data...</div>';
-
-        try {
-            const snap = await this.db.collection('items').get();
-            this.itemsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            this.renderItems(this.itemsCache);
-        } catch (e) {
-            console.error(e);
-            container.innerHTML = '<div class="text-center text-danger w-full py-8">Gagal memuat data</div>';
-        }
+    loadItems: function () {
+        this.renderItems(this.itemsCache);
     },
 
     renderItems: function (items) {
@@ -396,11 +426,6 @@ const app = {
 
     startScanner: function () {
         if (this.html5QrcodeScanner) return; // already running
-
-        // Ensure we have latest items cached for fast lookups
-        this.db.collection('items').get().then(snap => {
-            this.itemsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        });
 
         this.html5QrcodeScanner = new Html5Qrcode("reader");
         const config = { fps: 10, qrbox: { width: 250, height: 150 } };
@@ -586,37 +611,29 @@ const app = {
 
     // --- REPORTS ---
 
-    loadReports: async function () {
+    loadReports: function () {
         const tbody = document.querySelector('#reports-table tbody');
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Memuat data...</td></tr>';
+        if (!tbody) return;
+        tbody.innerHTML = '';
 
-        try {
-            const snap = await this.db.collection('transactions').orderBy('date', 'desc').limit(100).get();
-            tbody.innerHTML = '';
-
-            if (snap.docs.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Belum ada transaksi</td></tr>';
-                return;
-            }
-
-            snap.docs.forEach(doc => {
-                const t = doc.data();
-                const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
-                const tr = document.createElement('tr');
-                tr.innerHTML = `
-                    <td class="font-mono text-xs">${doc.id.substring(0, 8)}</td>
-                    <td>${new Date(t.date).toLocaleString('id-ID')}</td>
-                    <td><span class="${badgeClass}">${t.type}</span></td>
-                    <td>${t.itemName} <br><span class="text-xs text-muted font-mono">${t.itemId}</span></td>
-                    <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.qty}</td>
-                    <td class="text-sm">${t.note || '-'}</td>
-                `;
-                tbody.appendChild(tr);
-            });
-        } catch (e) {
-            console.error(e);
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Gagal memuat data</td></tr>';
+        if (this.transactionsCache.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Belum ada transaksi</td></tr>';
+            return;
         }
+
+        this.transactionsCache.slice(0, 100).forEach(t => {
+            const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="font-mono text-xs">${(t.id || '').substring(0, 8)}</td>
+                <td>${new Date(t.date).toLocaleString('id-ID')}</td>
+                <td><span class="${badgeClass}">${t.type}</span></td>
+                <td>${t.itemName} <br><span class="text-xs text-muted font-mono">${t.itemId}</span></td>
+                <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.qty}</td>
+                <td class="text-sm">${t.note || '-'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
     },
 
     exportCSV: async function () {
