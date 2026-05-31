@@ -609,6 +609,14 @@ const app = {
 
     // --- BALANCE / KEUANGAN VIEW ---
     renderBalanceView: function () {
+        this.transactionsCache.forEach(t => {
+            console.log(
+                t.type,
+                t.qty,
+                t.cost,
+                t.price
+            );
+        });
 
         let totalIncome = 0;
         let totalExpense = 0;
