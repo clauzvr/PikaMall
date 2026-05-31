@@ -628,15 +628,49 @@ const app = {
             const cost = parseInt(t.cost || 0);
 
             if (t.type === 'OUT') {
-                totalIncome += price * qty;
-            }
 
-            if (t.type === 'IN') {
-                totalExpense += cost * qty;
-            }
+                const amount =
+                    (parseInt(t.price || 0) * parseInt(t.qty || 0));
 
-            if (t.type === 'WALLETADJ') {
-                totalIncome += parseInt(t.price || 0);
+                jenis = 'Penjualan';
+                badge = 'badge-in';
+
+                debit =
+                    `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
+
+                detail =
+                    `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.price || 0)}`;
+
+            } else if (t.type === 'IN') {
+
+                const amount =
+                    (parseInt(t.cost || 0) * parseInt(t.qty || 0));
+
+                jenis = 'Pembelian';
+                badge = 'badge-out';
+
+                kredit =
+                    `<span style="color:#f87171;font-weight:700;">-Rp ${this.formatRp(amount)}</span>`;
+
+                detail =
+                    `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.cost || 0)}`;
+
+            } else if (t.type === 'WALLETADJ') {
+
+                const amount = parseInt(
+                    t.price ?? t.walletDelta ?? 0
+                );
+
+                jenis = 'Tambah Modal';
+                badge = 'badge-in';
+
+                debit =
+                    `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
+
+                detail = t.note || 'Tambah Modal';
+
+            } else {
+                return;
             }
         });
 
