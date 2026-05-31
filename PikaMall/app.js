@@ -511,6 +511,8 @@ const app = {
                 itemName: item.name,
                 type: type,
                 qty: qty,
+                cost: parseInt(item.cost || 0),
+                price: parseInt(item.price || 0),
                 note: note,
                 date: new Date().toISOString()
             });
@@ -617,12 +619,27 @@ const app = {
         tbody.innerHTML = '';
 
         if (this.transactionsCache.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Belum ada transaksi</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Belum ada transaksi</td></tr>';
             return;
         }
 
         this.transactionsCache.slice(0, 100).forEach(t => {
             const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+            
+            // Get cost and price with backward compatibility fallback
+            const item = this.itemsCache.find(i => i.id === t.itemId);
+            const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
+            const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
+            
+            // Calculate profit only for OUT transactions
+            let profitText = '-';
+            let profitClass = '';
+            if (t.type === 'OUT') {
+                const profit = (price - cost) * parseInt(t.qty);
+                profitText = `Rp ${this.formatRp(profit)}`;
+                profitClass = profit >= 0 ? 'text-green-600 font-bold' : 'text-danger font-bold';
+            }
+
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td class="font-mono text-xs">${(t.id || '').substring(0, 8)}</td>
@@ -630,6 +647,9 @@ const app = {
                 <td><span class="${badgeClass}">${t.type}</span></td>
                 <td>${t.itemName} <br><span class="text-xs text-muted font-mono">${t.itemId}</span></td>
                 <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.qty}</td>
+                <td>Rp ${this.formatRp(cost)}</td>
+                <td>Rp ${this.formatRp(price)}</td>
+                <td class="${profitClass}">${profitText}</td>
                 <td class="text-sm">${t.note || '-'}</td>
             `;
             tbody.appendChild(tr);
@@ -639,10 +659,19 @@ const app = {
     exportCSV: async function () {
         try {
             const snap = await this.db.collection('transactions').orderBy('date', 'desc').get();
-            let csvContent = "ID Transaksi,Tanggal,Jenis,ID Barang,Nama Barang,Jumlah,Keterangan\n";
+            let csvContent = "ID Transaksi,Tanggal,Jenis,ID Barang,Nama Barang,Jumlah,Harga Modal,Harga Jual,Keuntungan,Keterangan\n";
 
             snap.docs.forEach(doc => {
                 const t = doc.data();
+                const item = this.itemsCache.find(i => i.id === t.itemId);
+                const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
+                const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
+                
+                let profit = 0;
+                if (t.type === 'OUT') {
+                    profit = (price - cost) * parseInt(t.qty);
+                }
+
                 const row = [
                     doc.id,
                     new Date(t.date).toLocaleString('id-ID'),
@@ -650,6 +679,9 @@ const app = {
                     t.itemId,
                     t.itemName,
                     t.qty,
+                    cost,
+                    price,
+                    profit,
                     `"${t.note || ''}"`
                 ].join(",");
                 csvContent += row + "\n";
