@@ -865,13 +865,10 @@ const app = {
                 ? 0
                 : parseInt(t.qty || 0);
 
-            if (t.type === 'WALLETADJ') {
-                profitText = '-';
-            }
-
             // Calculate profit only for OUT transactions
             let profitText = '-';
             let profitClass = '';
+
             if (t.type === 'OUT') {
                 const profit = (price - cost) * parseInt(t.qty);
                 profitText = `Rp ${this.formatRp(profit)}`;
