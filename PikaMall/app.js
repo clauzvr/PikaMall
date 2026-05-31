@@ -577,8 +577,6 @@ const app = {
             walletDelta = pricePerItem * qty; // Earning money from selling
         }
 
-        const newBalance = this.balanceCache + walletDelta;
-
         try {
             const batch = this.db.batch();
 
@@ -602,7 +600,9 @@ const app = {
 
             // 3. Update wallet balance atomically
             const walletRef = this.db.collection('settings').doc('wallet');
-            batch.set(walletRef, { balance: newBalance }, { merge: true });
+            batch.set(walletRef, {
+                balance: firebase.firestore.FieldValue.increment(walletDelta)
+            }, { merge: true });
 
             await batch.commit();
 
