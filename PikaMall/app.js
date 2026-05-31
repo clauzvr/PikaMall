@@ -154,12 +154,12 @@ const app = {
         // Listen to items collection
         this.db.collection('items').onSnapshot((snap) => {
             this.itemsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            
+
             // Re-render items view if currently active
             if (document.getElementById('view-items').classList.contains('active')) {
                 this.renderItems(this.itemsCache);
             }
-            
+
             // Re-render dashboard statistics
             this.updateDashboardStats();
         }, (error) => {
@@ -625,12 +625,12 @@ const app = {
 
         this.transactionsCache.slice(0, 100).forEach(t => {
             const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
-            
+
             // Get cost and price with backward compatibility fallback
             const item = this.itemsCache.find(i => i.id === t.itemId);
             const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
             const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
-            
+
             // Calculate profit only for OUT transactions
             let profitText = '-';
             let profitClass = '';
@@ -666,7 +666,7 @@ const app = {
                 const item = this.itemsCache.find(i => i.id === t.itemId);
                 const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
                 const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
-                
+
                 let profit = 0;
                 if (t.type === 'OUT') {
                     profit = (price - cost) * parseInt(t.qty);
