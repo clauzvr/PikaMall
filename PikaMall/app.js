@@ -7,6 +7,7 @@ const app = {
     currentScanMode: 'IN', // 'IN' or 'OUT'
     itemsCache: [], // Cache to avoid excessive reads
     transactionsCache: [],
+    balanceCache: 0, // Current wallet balance
     listenersInitialized: false,
 
     // User's Secure Firebase Config
@@ -71,6 +72,9 @@ const app = {
                 break;
             case 'reports':
                 this.loadReports();
+                break;
+            case 'balance':
+                this.renderBalanceView();
                 break;
             case 'settings':
                 // Settings view logic if any
@@ -178,8 +182,24 @@ const app = {
             if (document.getElementById('view-reports').classList.contains('active')) {
                 this.loadReports();
             }
+
+            // Re-render balance view if currently active
+            if (document.getElementById('view-balance').classList.contains('active')) {
+                this.renderBalanceView();
+            }
         }, (error) => {
             console.error("Realtime transactions error:", error);
+        });
+
+        // Listen to wallet document for real-time balance updates
+        this.db.collection('settings').doc('wallet').onSnapshot((doc) => {
+            this.balanceCache = doc.exists ? (doc.data().balance || 0) : 0;
+
+            // Update balance stat card if visible
+            const el = document.getElementById('balance-current');
+            if (el) el.textContent = `Rp ${this.formatRp(this.balanceCache)}`;
+        }, (error) => {
+            console.error("Realtime wallet error:", error);
         });
     },
 
@@ -386,6 +406,51 @@ const app = {
         document.getElementById('btn-do-print').addEventListener('click', () => {
             this.executePrint();
         });
+
+        // Adjust Balance Form
+        document.getElementById('form-adjust-balance').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-balance');
+            btn.disabled = true;
+            btn.textContent = 'Menyimpan...';
+
+            const newBalance = parseInt(document.getElementById('input-new-balance').value);
+            const note = document.getElementById('input-adjust-note').value;
+            const diff = newBalance - this.balanceCache;
+
+            try {
+                const batch = this.db.batch();
+
+                // Update wallet balance
+                const walletRef = this.db.collection('settings').doc('wallet');
+                batch.set(walletRef, { balance: newBalance }, { merge: true });
+
+                // Record adjustment transaction for audit trail
+                const txRef = this.db.collection('transactions').doc();
+                batch.set(txRef, {
+                    itemId: '-',
+                    itemName: 'Penyesuaian Saldo',
+                    type: 'WALLETADJ',
+                    qty: 1,
+                    cost: 0,
+                    price: 0,
+                    walletDelta: diff,
+                    note: note,
+                    date: new Date().toISOString()
+                });
+
+                await batch.commit();
+                this.showToast('Saldo berhasil diatur!');
+                this.closeModal('modal-adjust-balance');
+                e.target.reset();
+            } catch (err) {
+                console.error(err);
+                alert('Gagal menyimpan saldo: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Simpan Saldo';
+            }
+        });
     },
 
     openEditModal: function (id) {
@@ -490,34 +555,54 @@ const app = {
         const item = this.itemsCache.find(i => i.id === itemId);
         if (!item) return;
 
+        const costPerItem = parseInt(item.cost || 0);
+        const pricePerItem = parseInt(item.price || 0);
+
         let newStock = item.stock;
+        let walletDelta = 0; // positive = balance increases, negative = balance decreases
+
         if (type === 'IN') {
             newStock += qty;
+            walletDelta = -(costPerItem * qty); // Spending money to buy stock
         } else {
             if (newStock < qty) {
                 alert("Stok tidak mencukupi!");
                 return;
             }
             newStock -= qty;
+            walletDelta = pricePerItem * qty; // Earning money from selling
         }
 
-        try {
-            // Update stock
-            await this.db.collection('items').doc(itemId).update({ stock: newStock });
+        const newBalance = this.balanceCache + walletDelta;
 
-            // Record transaction
-            await this.db.collection('transactions').add({
+        try {
+            const batch = this.db.batch();
+
+            // 1. Update item stock
+            const itemRef = this.db.collection('items').doc(itemId);
+            batch.update(itemRef, { stock: newStock });
+
+            // 2. Record transaction
+            const txRef = this.db.collection('transactions').doc();
+            batch.set(txRef, {
                 itemId: itemId,
                 itemName: item.name,
                 type: type,
                 qty: qty,
-                cost: parseInt(item.cost || 0),
-                price: parseInt(item.price || 0),
+                cost: costPerItem,
+                price: pricePerItem,
+                walletDelta: walletDelta,
                 note: note,
                 date: new Date().toISOString()
             });
 
-            // Update cache
+            // 3. Update wallet balance atomically
+            const walletRef = this.db.collection('settings').doc('wallet');
+            batch.set(walletRef, { balance: newBalance }, { merge: true });
+
+            await batch.commit();
+
+            // Update local cache
             item.stock = newStock;
 
             this.showToast(`Transaksi berhasil: ${type} ${qty} ${item.name}`);
@@ -525,6 +610,85 @@ const app = {
             console.error(e);
             alert("Gagal memproses transaksi");
         }
+    },
+
+    // --- BALANCE / KEUANGAN VIEW ---
+
+    renderBalanceView: function () {
+        // Update stat cards
+        const elCurrent = document.getElementById('balance-current');
+        if (elCurrent) elCurrent.textContent = `Rp ${this.formatRp(this.balanceCache)}`;
+
+        // Calculate total income & expense from transactions cache
+        let totalIncome = 0;
+        let totalExpense = 0;
+
+        this.transactionsCache.forEach(t => {
+            if (t.walletDelta !== undefined) {
+                if (t.walletDelta > 0) totalIncome += t.walletDelta;
+                else totalExpense += Math.abs(t.walletDelta);
+            } else {
+                // Backward compatibility: compute from transaction data
+                if (t.type === 'OUT') totalIncome += (parseInt(t.price || 0) * parseInt(t.qty || 0));
+                if (t.type === 'IN') totalExpense += (parseInt(t.cost || 0) * parseInt(t.qty || 0));
+            }
+        });
+
+        const elIncome = document.getElementById('balance-income');
+        const elExpense = document.getElementById('balance-expense');
+        if (elIncome) elIncome.textContent = `Rp ${this.formatRp(totalIncome)}`;
+        if (elExpense) elExpense.textContent = `Rp ${this.formatRp(totalExpense)}`;
+
+        // Populate cash flow table
+        const tbody = document.querySelector('#cashflow-table tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        if (this.transactionsCache.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Belum ada arus kas.</td></tr>';
+            return;
+        }
+
+        this.transactionsCache.forEach(t => {
+            let typeLabel = '';
+            let typeClass = '';
+            let debit = '';
+            let kredit = '';
+            let detail = '';
+
+            if (t.type === 'OUT') {
+                typeLabel = 'Penjualan';
+                typeClass = 'badge-in';
+                const amount = (parseInt(t.price || 0)) * parseInt(t.qty || 0);
+                debit = `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
+                detail = `${t.itemName} &times; ${t.qty} @ Rp ${this.formatRp(t.price || 0)}`;
+            } else if (t.type === 'IN') {
+                typeLabel = 'Pembelian';
+                typeClass = 'badge-out';
+                const amount = (parseInt(t.cost || 0)) * parseInt(t.qty || 0);
+                kredit = `<span style="color:#f87171;font-weight:700;">-Rp ${this.formatRp(amount)}</span>`;
+                detail = `${t.itemName} &times; ${t.qty} @ Rp ${this.formatRp(t.cost || 0)}`;
+            } else if (t.type === 'WALLETADJ') {
+                typeLabel = 'Penyesuaian';
+                typeClass = 'badge-out' + (t.walletDelta >= 0 ? ' badge-in' : '');
+                const delta = t.walletDelta || 0;
+                if (delta >= 0) debit = `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(delta)}</span>`;
+                else kredit = `<span style="color:#f87171;font-weight:700;">-Rp ${this.formatRp(Math.abs(delta))}</span>`;
+                detail = t.note || '-';
+            } else {
+                detail = t.note || '-';
+            }
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="text-xs">${new Date(t.date).toLocaleString('id-ID')}</td>
+                <td><span class="${typeClass}">${typeLabel || t.type}</span></td>
+                <td>${detail}</td>
+                <td>${debit || '-'}</td>
+                <td>${kredit || '-'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
     },
 
     // --- BLUETOOTH PRINTING ---
