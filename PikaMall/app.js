@@ -9,12 +9,13 @@ const app = {
 
     // User's Secure Firebase Config
     firebaseConfig: {
-        apiKey: "AIzaSyBSkl-yp20QsOe1oaIDgiEGgiIMc6PhevA",
-        authDomain: "inventoriseveleo.firebaseapp.com",
-        projectId: "inventoriseveleo",
-        storageBucket: "inventoriseveleo.firebasestorage.app",
-        messagingSenderId: "25266480089",
-        appId: "1:25266480089:web:570d2a0afbc724b5beefc8"
+        apiKey: "AIzaSyBF561VBLYB78jKwSsmD13zrdZpwUWzDx0",
+        authDomain: "pikamall.firebaseapp.com",
+        projectId: "pikamall",
+        storageBucket: "pikamall.firebasestorage.app",
+        messagingSenderId: "464341365772",
+        appId: "1:464341365772:web:783e308ba1936c9302ea29",
+        measurementId: "G-NTGKFKLL1P"
     },
 
     init: function () {
@@ -105,24 +106,26 @@ const app = {
         }
     },
 
-    handleLogin: async function (e) {
-        e.preventDefault();
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
-        const btn = document.getElementById('btn-login');
+    handleGoogleLogin: async function () {
+        const btn = document.getElementById('btn-google-login');
+        const originalContent = btn.innerHTML;
 
         btn.disabled = true;
-        btn.innerHTML = '<i class="lucide-loader"></i> Masuk...';
+        btn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google Logo" class="google-icon"> <span>Masuk...</span>';
 
         try {
-            await this.auth.signInWithEmailAndPassword(email, password);
+            const provider = new firebase.auth.GoogleAuthProvider();
+            provider.setCustomParameters({
+                prompt: 'select_account'
+            });
+            await this.auth.signInWithPopup(provider);
             this.showToast("Berhasil Login!");
         } catch (error) {
             console.error(error);
             alert("Gagal Login: " + error.message);
         } finally {
             btn.disabled = false;
-            btn.innerHTML = 'Login';
+            btn.innerHTML = originalContent;
         }
     },
 
