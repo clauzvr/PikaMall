@@ -420,19 +420,25 @@ const app = {
                 const batch = this.db.batch();
 
                 // Update wallet balance
+                const modalMasuk = parseInt(
+                    document.getElementById('input-new-balance').value || 0
+                );
+
+                const saldoBaru = this.balanceCache + modalMasuk;
                 const walletRef = this.db.collection('settings').doc('wallet');
-                batch.set(walletRef, { balance: newBalance }, { merge: true });
+                batch.set(walletRef, {
+                    balance: firebase.firestore.FieldValue.increment(modalMasuk)
+                }, { merge: true });
 
                 // Record adjustment transaction for audit trail
                 const txRef = this.db.collection('transactions').doc();
                 batch.set(txRef, {
                     itemId: '-',
-                    itemName: 'Penyesuaian Saldo',
+                    itemName: 'Tambah Modal',
                     type: 'WALLETADJ',
                     qty: 0,
                     cost: 0,
-                    price: 0,
-                    walletDelta: modalMasuk,
+                    price: modalMasuk,
                     note: note,
                     date: new Date().toISOString()
                 });
