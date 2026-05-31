@@ -411,7 +411,10 @@ const app = {
 
             const newBalance = parseInt(document.getElementById('input-new-balance').value);
             const note = document.getElementById('input-adjust-note').value;
-            const diff = newBalance - this.balanceCache;
+
+            const modalMasuk = parseInt(
+                document.getElementById('input-new-balance').value || 0
+            );
 
             try {
                 const batch = this.db.batch();
@@ -426,10 +429,10 @@ const app = {
                     itemId: '-',
                     itemName: 'Penyesuaian Saldo',
                     type: 'WALLETADJ',
-                    qty: 1,
+                    qty: 0,
                     cost: 0,
                     price: 0,
-                    walletDelta: diff,
+                    walletDelta: modalMasuk,
                     note: note,
                     date: new Date().toISOString()
                 });
@@ -609,15 +612,6 @@ const app = {
 
     // --- BALANCE / KEUANGAN VIEW ---
     renderBalanceView: function () {
-        this.transactionsCache.forEach(t => {
-            console.log(
-                t.type,
-                t.qty,
-                t.cost,
-                t.price
-            );
-        });
-
         let totalIncome = 0;
         let totalExpense = 0;
 
@@ -633,6 +627,10 @@ const app = {
 
             if (t.type === 'IN') {
                 totalExpense += cost * qty;
+            }
+
+            if (t.type === 'WALLETADJ') {
+                totalIncome += parseInt(t.price || 0);
             }
         });
 
@@ -823,6 +821,13 @@ const app = {
             const item = this.itemsCache.find(i => i.id === t.itemId);
             const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
             const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
+            const qty = t.type === 'WALLETADJ'
+                ? 0
+                : parseInt(t.qty || 0);
+
+            if (t.type === 'WALLETADJ') {
+                profitText = '-';
+            }
 
             // Calculate profit only for OUT transactions
             let profitText = '-';
