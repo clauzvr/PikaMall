@@ -193,8 +193,6 @@ const app = {
 
         // Listen to wallet document for real-time balance updates
         this.db.collection('settings').doc('wallet').onSnapshot((doc) => {
-            // Update balance stat card if visible
-            const el = document.getElementById('balance-current');
         }, (error) => {
             console.error("Realtime wallet error:", error);
         });
@@ -413,6 +411,7 @@ const app = {
 
             const newBalance = parseInt(document.getElementById('input-new-balance').value);
             const note = document.getElementById('input-adjust-note').value;
+            const diff = newBalance - this.balanceCache;
 
             try {
                 const batch = this.db.batch();
@@ -569,6 +568,8 @@ const app = {
             walletDelta = pricePerItem * qty; // Earning money from selling
         }
 
+        const newBalance = this.balanceCache + walletDelta;
+
         try {
             const batch = this.db.batch();
 
@@ -608,6 +609,7 @@ const app = {
 
     // --- BALANCE / KEUANGAN VIEW ---
     renderBalanceView: function () {
+
         let totalIncome = 0;
         let totalExpense = 0;
 
@@ -618,65 +620,74 @@ const app = {
             const cost = parseInt(t.cost || 0);
 
             if (t.type === 'OUT') {
-                totalIncome += (price * qty);
+                totalIncome += price * qty;
             }
 
             if (t.type === 'IN') {
-                totalExpense += (cost * qty);
+                totalExpense += cost * qty;
             }
         });
 
         const currentBalance = totalIncome - totalExpense;
 
-        // Update stat cards
-        const elCurrent = document.getElementById('balance-current');
-        const elIncome = document.getElementById('balance-income');
-        const elExpense = document.getElementById('balance-expense');
+        // Update cards
+        document.getElementById('balance-current').textContent =
+            `Rp ${this.formatRp(currentBalance)}`;
 
-        if (elCurrent) elCurrent.textContent = `Rp ${this.formatRp(currentBalance)}`;
-        if (elIncome) elIncome.textContent = `Rp ${this.formatRp(totalIncome)}`;
-        if (elExpense) elExpense.textContent = `Rp ${this.formatRp(totalExpense)}`;
+        document.getElementById('balance-income').textContent =
+            `Rp ${this.formatRp(totalIncome)}`;
 
-        // Populate cash flow table
+        document.getElementById('balance-expense').textContent =
+            `Rp ${this.formatRp(totalExpense)}`;
+
+        // Cashflow table
         const tbody = document.querySelector('#cashflow-table tbody');
+
         if (!tbody) return;
 
         tbody.innerHTML = '';
 
         if (this.transactionsCache.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Belum ada arus kas.</td></tr>';
+            tbody.innerHTML =
+                '<tr><td colspan="5" class="text-center text-muted">Belum ada arus kas.</td></tr>';
             return;
         }
 
         this.transactionsCache.forEach(t => {
 
-            let typeLabel = '';
-            let typeClass = '';
-            let debit = '';
-            let kredit = '';
+            let jenis = '';
+            let badge = '';
+            let debit = '-';
+            let kredit = '-';
             let detail = '';
 
             if (t.type === 'OUT') {
 
-                const amount = (parseInt(t.price || 0) * parseInt(t.qty || 0));
+                const amount =
+                    (parseInt(t.price || 0) * parseInt(t.qty || 0));
 
-                typeLabel = 'Penjualan';
-                typeClass = 'badge-in';
+                jenis = 'Penjualan';
+                badge = 'badge-in';
 
-                debit = `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
+                debit =
+                    `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
 
-                detail = `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.price || 0)}`;
+                detail =
+                    `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.price || 0)}`;
 
             } else if (t.type === 'IN') {
 
-                const amount = (parseInt(t.cost || 0) * parseInt(t.qty || 0));
+                const amount =
+                    (parseInt(t.cost || 0) * parseInt(t.qty || 0));
 
-                typeLabel = 'Pembelian';
-                typeClass = 'badge-out';
+                jenis = 'Pembelian';
+                badge = 'badge-out';
 
-                kredit = `<span style="color:#f87171;font-weight:700;">-Rp ${this.formatRp(amount)}</span>`;
+                kredit =
+                    `<span style="color:#f87171;font-weight:700;">-Rp ${this.formatRp(amount)}</span>`;
 
-                detail = `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.cost || 0)}`;
+                detail =
+                    `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.cost || 0)}`;
 
             } else {
                 return;
@@ -685,17 +696,22 @@ const app = {
             const tr = document.createElement('tr');
 
             tr.innerHTML = `
-                <td class="text-xs">${new Date(t.date).toLocaleString('id-ID')}</td>
-                <td><span class="${typeClass}">${typeLabel}</span></td>
+                <td class="text-xs">
+                    ${new Date(t.date).toLocaleString('id-ID')}
+                </td>
+                <td>
+                    <span class="${badge}">
+                        ${jenis}
+                    </span>
+                </td>
                 <td>${detail}</td>
-                <td>${debit || '-'}</td>
-                <td>${kredit || '-'}</td>
+                <td>${debit}</td>
+                <td>${kredit}</td>
             `;
 
             tbody.appendChild(tr);
         });
     },
-
     // --- BLUETOOTH PRINTING ---
 
     currentPrintData: null,
