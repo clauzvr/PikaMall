@@ -91,6 +91,17 @@ const app = {
             this.auth = firebase.auth();
             console.log("Firebase initialized");
 
+            this.auth.getRedirectResult()
+                .then((result) => {
+                    if (result.user) {
+                        this.showToast("Berhasil Login lewat Redirect!");
+                    }
+                })
+                .catch((error) => {
+                    console.error("Error dari redirect login:", error);
+                    alert("Gagal memproses login: " + error.message);
+                });
+
             // Listen for auth state changes
             this.auth.onAuthStateChanged((user) => {
                 if (user) {
@@ -127,12 +138,12 @@ const app = {
             provider.setCustomParameters({
                 prompt: 'select_account'
             });
-            await this.auth.signInWithPopup(provider);
-            this.showToast("Berhasil Login!");
+
+            await this.auth.signInWithRedirect(provider);
+
         } catch (error) {
             console.error(error);
             alert("Gagal Login: " + error.message);
-        } finally {
             btn.disabled = false;
             btn.innerHTML = originalContent;
         }
@@ -255,7 +266,7 @@ const app = {
                 let badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
                 let displayType = t.type;
                 let displayQty = '';
-                
+
                 if (t.type === 'WALLETADJ') {
                     badgeClass = 'badge-in';
                     displayType = 'TAMBAH MODAL';
@@ -263,7 +274,7 @@ const app = {
                 } else {
                     displayQty = (t.type === 'IN' ? '+' : '-') + (t.qty || 0);
                 }
-                
+
                 const dateObj = t.date ? new Date(t.date) : new Date();
                 const dateStr = isNaN(dateObj) ? '-' : dateObj.toLocaleDateString('id-ID');
 
@@ -826,13 +837,13 @@ const app = {
 
             // Barcode height: GS h 80
             buffer.push(0x1D, 0x68, 0x50);
-            
+
             // Barcode width: GS w 2
             buffer.push(0x1D, 0x77, 0x02);
-            
+
             // Disable HRI characters (we print ID manually): GS H 0
             buffer.push(0x1D, 0x48, 0x00);
-            
+
             // Print barcode CODE39 (Format 1): GS k 4 [data] NUL
             buffer.push(0x1D, 0x6B, 0x04);
             buffer.push(...encoder.encode(idText));
@@ -846,7 +857,7 @@ const app = {
             // Cheap BLE printers often drop packets if sent too fast or if > 20 bytes on WriteWithoutResponse
             const data = new Uint8Array(buffer);
             const chunkSize = 20;
-            
+
             for (let i = 0; i < data.length; i += chunkSize) {
                 const chunk = data.slice(i, i + chunkSize);
                 await characteristic.writeValue(chunk);
