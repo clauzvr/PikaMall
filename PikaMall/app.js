@@ -4,7 +4,7 @@ lucide.createIcons();
 const app = {
     db: null,
     html5QrcodeScanner: null,
-    currentScanMode: 'IN', // 'IN' or 'OUT'
+    currentScanMode: 'OUT', // 'IN' or 'OUT'
     itemsCache: [], // Cache to avoid excessive reads
     transactionsCache: [],
     balanceCache: 0, // Current wallet balance

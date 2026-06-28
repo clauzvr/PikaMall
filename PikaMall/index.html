@@ -189,25 +189,18 @@
 
                 <div class="scan-container glass-card">
                     <div class="scan-mode-selector">
-                        <input type="radio" id="mode-in" name="scanMode" value="IN" checked>
-                        <label for="mode-in" class="mode-label btn-mode-in">
-                            <i data-lucide="arrow-down-to-line"></i> Barang Masuk
-                        </label>
-
-                        <input type="radio" id="mode-out" name="scanMode" value="OUT">
+                        <input type="radio" id="mode-out" name="scanMode" value="OUT" checked>
                         <label for="mode-out" class="mode-label btn-mode-out">
                             <i data-lucide="arrow-up-from-line"></i> Barang Keluar
                         </label>
+
+                        <input type="radio" id="mode-in" name="scanMode" value="IN">
+                        <label for="mode-in" class="mode-label btn-mode-in">
+                            <i data-lucide="arrow-down-to-line"></i> Barang Masuk
+                        </label>
                     </div>
 
-                    <div id="reader-container" class="reader-container">
-                        <div id="reader"></div>
-                        <p class="text-muted mt-4 text-center text-sm"><i data-lucide="camera"></i> Izinkan akses kamera
-                            untuk memulai scan</p>
-                    </div>
-
-                    <div class="manual-input mt-4">
-                        <div class="divider"><span>ATAU</span></div>
+                    <div class="manual-input mb-4">
                         <form id="form-manual-entry" class="flex gap-2">
                             <div class="autocomplete-wrapper flex-1">
                                 <input type="text" id="manual-barcode-input" class="input-glass w-full"
@@ -216,6 +209,14 @@
                             </div>
                             <button type="submit" class="btn-secondary">Proses</button>
                         </form>
+                    </div>
+
+                    <div class="divider mb-4"><span>ATAU SCAN BARCODE</span></div>
+
+                    <div id="reader-container" class="reader-container">
+                        <div id="reader"></div>
+                        <p class="text-muted mt-4 text-center text-sm"><i data-lucide="camera"></i> Izinkan akses kamera
+                            untuk memulai scan</p>
                     </div>
                 </div>
             </section>
