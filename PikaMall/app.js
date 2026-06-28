@@ -342,7 +342,6 @@ const app = {
             const name = document.getElementById('input-item-name').value;
             const cost = document.getElementById('input-item-cost').value;
             const price = document.getElementById('input-item-price').value;
-            const stock = document.getElementById('input-item-stock').value;
 
             const id = 'BRG-' + Math.floor(1000 + Math.random() * 9000); // Generate simple ID
 
@@ -354,23 +353,9 @@ const app = {
                     name: name,
                     cost: parseInt(cost || 0),
                     price: parseInt(price || 0),
-                    stock: parseInt(stock || 0),
+                    stock: 0,
                     createdAt: new Date().toISOString()
                 });
-
-                if (parseInt(stock || 0) > 0) {
-                    const txRef = this.db.collection('transactions').doc();
-                    batch.set(txRef, {
-                        itemId: id,
-                        itemName: name,
-                        type: 'IN',
-                        qty: parseInt(stock || 0),
-                        cost: parseInt(cost || 0),
-                        price: parseInt(price || 0),
-                        note: 'Stok Awal',
-                        date: new Date().toISOString()
-                    });
-                }
 
                 await batch.commit();
                 this.showToast("Barang berhasil ditambahkan");
