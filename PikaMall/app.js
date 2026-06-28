@@ -812,35 +812,47 @@ const app = {
             const encoder = new TextEncoder();
             const idText = this.currentPrintData.id;
 
+            let buffer = [];
+
             // Initialize printer: ESC @
-            await characteristic.writeValue(new Uint8Array([0x1B, 0x40]));
+            buffer.push(0x1B, 0x40);
+
+            // Align Center: ESC a 1
+            buffer.push(0x1B, 0x61, 0x01);
 
             // Text Header
-            let textHeader = `${this.currentPrintData.name}\nRp ${this.formatRp(this.currentPrintData.price)}\n`;
-            await characteristic.writeValue(encoder.encode(textHeader));
+            let textHeader = `${this.currentPrintData.name}\nRp ${this.formatRp(this.currentPrintData.price)}\n\n`;
+            buffer.push(...encoder.encode(textHeader));
 
-            // Set alignment to Center: ESC a 1
-            await characteristic.writeValue(new Uint8Array([0x1B, 0x61, 0x01]));
+            // Barcode height: GS h 80
+            buffer.push(0x1D, 0x68, 0x50);
             
-            // Set barcode height (GS h 80) and width (GS w 2)
-            await characteristic.writeValue(new Uint8Array([0x1D, 0x68, 0x50, 0x1D, 0x77, 0x02]));
+            // Barcode width: GS w 2
+            buffer.push(0x1D, 0x77, 0x02);
             
-            // Print barcode CODE128
-            // Command: GS k 73 n d1...dn (n is length of data)
-            // Data must start with "{B" (0x7B, 0x42) for Code 128 subset B
-            const idBytes = encoder.encode(idText);
-            const barcodePrefix = new Uint8Array([0x1D, 0x6B, 0x49, idBytes.length + 2, 0x7B, 0x42]);
-            const barcodePayload = new Uint8Array(barcodePrefix.length + idBytes.length);
-            barcodePayload.set(barcodePrefix, 0);
-            barcodePayload.set(idBytes, barcodePrefix.length);
-            await characteristic.writeValue(barcodePayload);
-
-            // Set alignment back to Left: ESC a 0
-            await characteristic.writeValue(new Uint8Array([0x1B, 0x61, 0x00]));
+            // Disable HRI characters (we print ID manually): GS H 0
+            buffer.push(0x1D, 0x48, 0x00);
+            
+            // Print barcode CODE39 (Format 1): GS k 4 [data] NUL
+            buffer.push(0x1D, 0x6B, 0x04);
+            buffer.push(...encoder.encode(idText));
+            buffer.push(0x00); // NUL terminator
 
             // Text Footer and line feeds
             let textFooter = `\nID: ${idText}\n\n\n`;
-            await characteristic.writeValue(encoder.encode(textFooter));
+            buffer.push(...encoder.encode(textFooter));
+
+            // Convert to Uint8Array and chunk it
+            // Cheap BLE printers often drop packets if sent too fast or if > 20 bytes on WriteWithoutResponse
+            const data = new Uint8Array(buffer);
+            const chunkSize = 20;
+            
+            for (let i = 0; i < data.length; i += chunkSize) {
+                const chunk = data.slice(i, i + chunkSize);
+                await characteristic.writeValue(chunk);
+                // Wait 30ms between chunks to prevent buffer overflow in cheap printers
+                await new Promise(resolve => setTimeout(resolve, 30));
+            }
 
             this.showToast("Berhasil mencetak");
             this.closeModal('modal-print');
