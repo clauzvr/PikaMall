@@ -582,7 +582,7 @@ body {
     border: 1px solid var(--glass-border);
     border-radius: var(--radius-md);
     margin-top: 0.25rem;
-    max-height: 200px;
+    max-height: 350px;
     overflow-y: auto;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
@@ -613,7 +613,7 @@ body {
 
 .autocomplete-items .item-name {
     font-weight: 500;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     line-height: 1.2;
 }
 
