@@ -592,12 +592,15 @@ body {
 }
 
 .autocomplete-items div {
-    padding: 0.75rem 1rem;
+    padding: 0.5rem 0.75rem;
     cursor: pointer;
     border-bottom: 1px solid var(--glass-border);
     color: white;
     transition: var(--transition);
     text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
 }
 
 .autocomplete-items div:last-child {
@@ -610,11 +613,17 @@ body {
 
 .autocomplete-items .item-name {
     font-weight: 500;
+    font-size: 0.95rem;
+    line-height: 1.2;
 }
 
 .autocomplete-items .item-barcode {
     font-size: 0.75rem;
     color: var(--text-muted);
+}
+
+.manual-input {
+    width: 100%;
 }
 
 /* Items Grid */
