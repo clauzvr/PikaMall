@@ -1082,15 +1082,52 @@ const app = {
     },
 
     executeTutupBuku: async function () {
-        if (!confirm("YAKIN INGIN MENGHAPUS SEMUA TRANSAKSI SEBELUMNYA? Pastikan sudah di-backup/export.")) return;
+        if (!confirm("YAKIN INGIN MENGHAPUS SEMUA TRANSAKSI SEBELUMNYA? Saldo Keuangan saat ini akan disimpan sebagai Saldo Pindahan. Pastikan sudah di-backup/export.")) return;
 
         try {
+            // Calculate current balance before deleting
+            let totalIncome = 0;
+            let totalExpense = 0;
+            let totalWalletAdj = 0;
+            
+            this.transactionsCache.forEach(t => {
+                const qty = parseInt(t.qty || 0);
+                const price = parseInt(t.price || 0);
+                const cost = parseInt(t.cost || 0);
+                
+                if (t.type === 'OUT') totalIncome += price * qty;
+                else if (t.type === 'IN') totalExpense += cost * qty;
+                else if (t.type === 'WALLETADJ') totalWalletAdj += parseInt(t.price ?? t.walletDelta ?? 0);
+            });
+            
+            const currentBalance = totalWalletAdj + totalIncome - totalExpense;
+
             // Delete all transactions (simplified batch delete)
             const snap = await this.db.collection('transactions').get();
             const batchPromises = snap.docs.map(doc => this.db.collection('transactions').doc(doc.id).delete());
             await Promise.all(batchPromises);
 
-            this.showToast("Buku berhasil ditutup. Riwayat dikosongkan.");
+            // Add the rollover transaction
+            const batch = this.db.batch();
+            
+            const walletRef = this.db.collection('settings').doc('wallet');
+            batch.set(walletRef, { balance: currentBalance });
+
+            const txRef = this.db.collection('transactions').doc();
+            batch.set(txRef, {
+                itemId: '-',
+                itemName: 'Saldo Pindahan (Hasil Tutup Buku)',
+                type: 'WALLETADJ',
+                qty: 0,
+                price: currentBalance,
+                walletDelta: currentBalance,
+                date: new Date().toISOString(),
+                note: 'Sisa saldo dari periode sebelumnya'
+            });
+
+            await batch.commit();
+
+            this.showToast("Buku berhasil ditutup. Saldo dipindahkan, riwayat dikosongkan.");
             this.closeModal('modal-tutup-buku');
             this.loadReports();
         } catch (e) {
