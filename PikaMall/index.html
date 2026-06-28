@@ -209,8 +209,11 @@
                     <div class="manual-input mt-4">
                         <div class="divider"><span>ATAU</span></div>
                         <form id="form-manual-entry" class="flex gap-2">
-                            <input type="text" id="manual-barcode-input" class="input-glass flex-1"
-                                placeholder="Masukkan Barcode ID manual...">
+                            <div class="autocomplete-wrapper flex-1">
+                                <input type="text" id="manual-barcode-input" class="input-glass w-full"
+                                    placeholder="Ketik Nama Barang atau Barcode ID..." autocomplete="off">
+                                <div id="autocomplete-list" class="autocomplete-items hidden"></div>
+                            </div>
                             <button type="submit" class="btn-secondary">Proses</button>
                         </form>
                     </div>

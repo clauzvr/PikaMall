@@ -339,9 +339,18 @@ const app = {
             btn.disabled = true;
             btn.textContent = "Menyimpan...";
 
-            const name = document.getElementById('input-item-name').value;
+            const name = document.getElementById('input-item-name').value.trim();
             const cost = document.getElementById('input-item-cost').value;
             const price = document.getElementById('input-item-price').value;
+
+            // Validation: Nama barang harus unik
+            const isNameExists = this.itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase());
+            if (isNameExists) {
+                alert("Error: Nama Barang Harus Unik!");
+                btn.disabled = false;
+                btn.textContent = "Simpan";
+                return;
+            }
 
             const id = 'BRG-' + Math.floor(1000 + Math.random() * 9000); // Generate simple ID
 
@@ -375,9 +384,16 @@ const app = {
         document.getElementById('form-edit-item').addEventListener('submit', async (e) => {
             e.preventDefault();
             const id = document.getElementById('edit-item-id').value;
-            const name = document.getElementById('edit-item-name').value;
+            const name = document.getElementById('edit-item-name').value.trim();
             const cost = document.getElementById('edit-item-cost').value;
             const price = document.getElementById('edit-item-price').value;
+
+            // Validation: Nama barang harus unik
+            const isNameExists = this.itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase() && item.id !== id);
+            if (isNameExists) {
+                alert("Error: Nama Barang Harus Unik!");
+                return;
+            }
 
             try {
                 await this.db.collection('items').doc(id).update({
@@ -414,13 +430,76 @@ const app = {
             }
         });
 
-        // Manual Barcode Entry
-        document.getElementById('form-manual-entry').addEventListener('submit', (e) => {
+        // Manual Barcode Entry & Autocomplete
+        const manualInput = document.getElementById('manual-barcode-input');
+        const autocompleteList = document.getElementById('autocomplete-list');
+        const manualForm = document.getElementById('form-manual-entry');
+
+        // Hide autocomplete when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!manualInput.contains(e.target) && !autocompleteList.contains(e.target)) {
+                autocompleteList.classList.add('hidden');
+            }
+        });
+
+        // Filter and show autocomplete list on input
+        manualInput.addEventListener('input', (e) => {
+            const val = e.target.value.toLowerCase().trim();
+            autocompleteList.innerHTML = '';
+            
+            if (!val) {
+                autocompleteList.classList.add('hidden');
+                return;
+            }
+
+            const matches = this.itemsCache.filter(item => 
+                item.name.toLowerCase().includes(val) || 
+                item.id.toLowerCase().includes(val)
+            ).slice(0, 10); // Limit to 10 results
+
+            if (matches.length > 0) {
+                autocompleteList.classList.remove('hidden');
+                matches.forEach(item => {
+                    const div = document.createElement('div');
+                    div.innerHTML = `
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-barcode"><i data-lucide="barcode" style="width:12px;height:12px;display:inline-block;margin-right:4px;"></i>${item.id}</div>
+                    `;
+                    
+                    div.addEventListener('click', () => {
+                        manualInput.value = item.id;
+                        autocompleteList.classList.add('hidden');
+                        // Optional: automatically submit on click
+                        this.handleBarcodeScan(item.id);
+                        manualInput.value = '';
+                    });
+                    autocompleteList.appendChild(div);
+                });
+                // Re-initialize lucide icons for new elements
+                if(window.lucide) {
+                    window.lucide.createIcons();
+                }
+            } else {
+                autocompleteList.classList.add('hidden');
+            }
+        });
+
+        // Handle form submit (fallback if they type full ID and press enter)
+        manualForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            const barcode = document.getElementById('manual-barcode-input').value;
+            const barcode = manualInput.value.trim();
             if (barcode) {
-                this.handleBarcodeScan(barcode);
-                document.getElementById('manual-barcode-input').value = '';
+                // If the user typed a name exactly matching an item, find its barcode
+                const exactMatch = this.itemsCache.find(item => 
+                    item.id.toLowerCase() === barcode.toLowerCase() || 
+                    item.name.toLowerCase() === barcode.toLowerCase()
+                );
+                
+                const finalBarcode = exactMatch ? exactMatch.id : barcode;
+                
+                this.handleBarcodeScan(finalBarcode);
+                manualInput.value = '';
+                autocompleteList.classList.add('hidden');
             }
         });
 
