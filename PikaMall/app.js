@@ -91,17 +91,6 @@ const app = {
             this.auth = firebase.auth();
             console.log("Firebase initialized");
 
-            this.auth.getRedirectResult()
-                .then((result) => {
-                    if (result.user) {
-                        this.showToast("Berhasil Login lewat Redirect!");
-                    }
-                })
-                .catch((error) => {
-                    console.error("Error dari redirect login:", error);
-                    alert("Gagal memproses login: " + error.message);
-                });
-
             // Listen for auth state changes
             this.auth.onAuthStateChanged((user) => {
                 if (user) {
@@ -138,12 +127,12 @@ const app = {
             provider.setCustomParameters({
                 prompt: 'select_account'
             });
-
-            await this.auth.signInWithRedirect(provider);
-
+            await this.auth.signInWithPopup(provider);
+            this.showToast("Berhasil Login!");
         } catch (error) {
             console.error(error);
             alert("Gagal Login: " + error.message);
+        } finally {
             btn.disabled = false;
             btn.innerHTML = originalContent;
         }
