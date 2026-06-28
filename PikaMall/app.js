@@ -177,6 +177,8 @@ const app = {
 
             // Re-render dashboard recent transactions table
             this.updateDashboardTransactions();
+            // Re-render dashboard stats (Barang Masuk/Keluar depends on transactions)
+            this.updateDashboardStats();
 
             // Re-render reports view if currently active
             if (document.getElementById('view-reports').classList.contains('active')) {
@@ -193,6 +195,13 @@ const app = {
 
         // Listen to wallet document for real-time balance updates
         this.db.collection('settings').doc('wallet').onSnapshot((doc) => {
+            if (doc.exists) {
+                this.balanceCache = doc.data().balance || 0;
+            }
+            // Re-render balance view if currently active
+            if (document.getElementById('view-balance').classList.contains('active')) {
+                this.renderBalanceView();
+            }
         }, (error) => {
             console.error("Realtime wallet error:", error);
         });
@@ -409,12 +418,7 @@ const app = {
             btn.disabled = true;
             btn.textContent = 'Menyimpan...';
 
-            const newBalance = parseInt(document.getElementById('input-new-balance').value);
             const note = document.getElementById('input-adjust-note').value;
-
-            const modalMasuk = parseInt(
-                document.getElementById('input-new-balance').value || 0
-            );
 
             try {
                 const batch = this.db.batch();
@@ -620,61 +624,23 @@ const app = {
     renderBalanceView: function () {
         let totalIncome = 0;
         let totalExpense = 0;
+        let totalWalletAdj = 0;
 
         this.transactionsCache.forEach(t => {
-
             const qty = parseInt(t.qty || 0);
             const price = parseInt(t.price || 0);
             const cost = parseInt(t.cost || 0);
 
             if (t.type === 'OUT') {
-
-                const amount =
-                    (parseInt(t.price || 0) * parseInt(t.qty || 0));
-
-                jenis = 'Penjualan';
-                badge = 'badge-in';
-
-                debit =
-                    `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
-
-                detail =
-                    `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.price || 0)}`;
-
+                totalIncome += price * qty;
             } else if (t.type === 'IN') {
-
-                const amount =
-                    (parseInt(t.cost || 0) * parseInt(t.qty || 0));
-
-                jenis = 'Pembelian';
-                badge = 'badge-out';
-
-                kredit =
-                    `<span style="color:#f87171;font-weight:700;">-Rp ${this.formatRp(amount)}</span>`;
-
-                detail =
-                    `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.cost || 0)}`;
-
+                totalExpense += cost * qty;
             } else if (t.type === 'WALLETADJ') {
-
-                const amount = parseInt(
-                    t.price ?? t.walletDelta ?? 0
-                );
-
-                jenis = 'Tambah Modal';
-                badge = 'badge-in';
-
-                debit =
-                    `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
-
-                detail = t.note || 'Tambah Modal';
-
-            } else {
-                return;
+                totalWalletAdj += parseInt(t.price ?? t.walletDelta ?? 0);
             }
         });
 
-        const currentBalance = totalIncome - totalExpense;
+        const currentBalance = totalWalletAdj + totalIncome - totalExpense;
 
         // Update cards
         document.getElementById('balance-current').textContent =
@@ -734,6 +700,18 @@ const app = {
 
                 detail =
                     `${t.itemName} × ${t.qty} @ Rp ${this.formatRp(t.cost || 0)}`;
+
+            } else if (t.type === 'WALLETADJ') {
+
+                const amount = parseInt(t.price ?? t.walletDelta ?? 0);
+
+                jenis = 'Tambah Modal';
+                badge = 'badge-in';
+
+                debit =
+                    `<span style="color:#4ade80;font-weight:700;">+Rp ${this.formatRp(amount)}</span>`;
+
+                detail = t.note || 'Tambah Modal';
 
             } else {
                 return;
@@ -894,6 +872,15 @@ const app = {
     exportCSV: async function () {
         try {
             const snap = await this.db.collection('transactions').orderBy('date', 'desc').get();
+
+            const escapeCSV = (val) => {
+                const str = String(val ?? '');
+                if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                    return '"' + str.replace(/"/g, '""') + '"';
+                }
+                return str;
+            };
+
             let csvContent = "ID Transaksi,Tanggal,Jenis,ID Barang,Nama Barang,Jumlah,Harga Modal,Harga Jual,Keuntungan,Keterangan\n";
 
             snap.docs.forEach(doc => {
@@ -901,23 +888,33 @@ const app = {
                 const item = this.itemsCache.find(i => i.id === t.itemId);
                 const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
                 const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
+                const qty = parseInt(t.qty || 0);
 
+                let displayCost = cost;
+                let displayPrice = price;
                 let profit = 0;
+                let displayType = t.type;
+
                 if (t.type === 'OUT') {
-                    profit = (price - cost) * parseInt(t.qty);
+                    profit = (price - cost) * qty;
+                } else if (t.type === 'WALLETADJ') {
+                    displayType = 'TAMBAH MODAL';
+                    displayCost = 0;
+                    displayPrice = parseInt(t.price ?? t.walletDelta ?? 0);
+                    profit = 0;
                 }
 
                 const row = [
-                    doc.id,
-                    new Date(t.date).toLocaleString('id-ID'),
-                    t.type,
-                    t.itemId,
-                    t.itemName,
-                    t.qty,
-                    cost,
-                    price,
-                    profit,
-                    `"${t.note || ''}"`
+                    escapeCSV(doc.id),
+                    escapeCSV(new Date(t.date).toLocaleString('id-ID')),
+                    escapeCSV(displayType),
+                    escapeCSV(t.itemId),
+                    escapeCSV(t.itemName),
+                    escapeCSV(qty),
+                    escapeCSV(displayCost),
+                    escapeCSV(displayPrice),
+                    escapeCSV(profit),
+                    escapeCSV(t.note || '')
                 ].join(",");
                 csvContent += row + "\n";
             });
