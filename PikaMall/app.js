@@ -809,17 +809,38 @@ const app = {
             const characteristic = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb'); // Write without response
 
             // Prepare ESC/POS Data
-            // This is a very simplified ESC/POS generation for demo.
-            // Real printing of barcode requires specific ESC/POS barcode commands.
             const encoder = new TextEncoder();
+            const idText = this.currentPrintData.id;
 
             // Initialize printer: ESC @
-            let data = new Uint8Array([0x1B, 0x40]);
-            await characteristic.writeValue(data);
+            await characteristic.writeValue(new Uint8Array([0x1B, 0x40]));
 
-            // Text Name
-            let text = `${this.currentPrintData.name}\nRp ${this.formatRp(this.currentPrintData.price)}\nID: ${this.currentPrintData.id}\n\n\n`;
-            await characteristic.writeValue(encoder.encode(text));
+            // Text Header
+            let textHeader = `${this.currentPrintData.name}\nRp ${this.formatRp(this.currentPrintData.price)}\n`;
+            await characteristic.writeValue(encoder.encode(textHeader));
+
+            // Set alignment to Center: ESC a 1
+            await characteristic.writeValue(new Uint8Array([0x1B, 0x61, 0x01]));
+            
+            // Set barcode height (GS h 80) and width (GS w 2)
+            await characteristic.writeValue(new Uint8Array([0x1D, 0x68, 0x50, 0x1D, 0x77, 0x02]));
+            
+            // Print barcode CODE128
+            // Command: GS k 73 n d1...dn (n is length of data)
+            // Data must start with "{B" (0x7B, 0x42) for Code 128 subset B
+            const idBytes = encoder.encode(idText);
+            const barcodePrefix = new Uint8Array([0x1D, 0x6B, 0x49, idBytes.length + 2, 0x7B, 0x42]);
+            const barcodePayload = new Uint8Array(barcodePrefix.length + idBytes.length);
+            barcodePayload.set(barcodePrefix, 0);
+            barcodePayload.set(idBytes, barcodePrefix.length);
+            await characteristic.writeValue(barcodePayload);
+
+            // Set alignment back to Left: ESC a 0
+            await characteristic.writeValue(new Uint8Array([0x1B, 0x61, 0x00]));
+
+            // Text Footer and line feeds
+            let textFooter = `\nID: ${idText}\n\n\n`;
+            await characteristic.writeValue(encoder.encode(textFooter));
 
             this.showToast("Berhasil mencetak");
             this.closeModal('modal-print');
