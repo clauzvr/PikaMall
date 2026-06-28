@@ -347,13 +347,32 @@ const app = {
             const id = 'BRG-' + Math.floor(1000 + Math.random() * 9000); // Generate simple ID
 
             try {
-                await this.db.collection('items').doc(id).set({
+                const batch = this.db.batch();
+                const itemRef = this.db.collection('items').doc(id);
+
+                batch.set(itemRef, {
                     name: name,
-                    cost: parseInt(cost),
-                    price: parseInt(price),
-                    stock: parseInt(stock),
+                    cost: parseInt(cost || 0),
+                    price: parseInt(price || 0),
+                    stock: parseInt(stock || 0),
                     createdAt: new Date().toISOString()
                 });
+
+                if (parseInt(stock || 0) > 0) {
+                    const txRef = this.db.collection('transactions').doc();
+                    batch.set(txRef, {
+                        itemId: id,
+                        itemName: name,
+                        type: 'IN',
+                        qty: parseInt(stock || 0),
+                        cost: parseInt(cost || 0),
+                        price: parseInt(price || 0),
+                        note: 'Stok Awal',
+                        date: new Date().toISOString()
+                    });
+                }
+
+                await batch.commit();
                 this.showToast("Barang berhasil ditambahkan");
                 this.closeModal('modal-add-item');
                 e.target.reset();
