@@ -252,13 +252,27 @@ const app = {
             tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Belum ada transaksi</td></tr>';
         } else {
             this.transactionsCache.slice(0, 5).forEach(t => {
-                const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+                let badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+                let displayType = t.type;
+                let displayQty = '';
+                
+                if (t.type === 'WALLETADJ') {
+                    badgeClass = 'badge-in';
+                    displayType = 'TAMBAH MODAL';
+                    displayQty = '-';
+                } else {
+                    displayQty = (t.type === 'IN' ? '+' : '-') + (t.qty || 0);
+                }
+                
+                const dateObj = t.date ? new Date(t.date) : new Date();
+                const dateStr = isNaN(dateObj) ? '-' : dateObj.toLocaleDateString('id-ID');
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td>${new Date(t.date).toLocaleDateString('id-ID')}</td>
-                    <td><span class="${badgeClass}">${t.type}</span></td>
-                    <td>${t.itemName || t.itemId}</td>
-                    <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.type === 'IN' ? '+' : '-'}${t.qty}</td>
+                    <td>${dateStr}</td>
+                    <td><span class="${badgeClass}">${displayType}</span></td>
+                    <td>${t.itemName || t.itemId || '-'}</td>
+                    <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : (t.type === 'WALLETADJ' ? 'text-muted' : 'text-danger')}">${displayQty}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -833,39 +847,54 @@ const app = {
         }
 
         this.transactionsCache.slice(0, 100).forEach(t => {
-            const badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+            try {
+                let badgeClass = t.type === 'IN' ? 'badge-in' : 'badge-out';
+                let displayType = t.type;
+                if (t.type === 'WALLETADJ') {
+                    badgeClass = 'badge-in';
+                    displayType = 'TAMBAH MODAL';
+                }
 
-            // Get cost and price with backward compatibility fallback
-            const item = this.itemsCache.find(i => i.id === t.itemId);
-            const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
-            const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
-            const qty = t.type === 'WALLETADJ'
-                ? 0
-                : parseInt(t.qty || 0);
+                // Get cost and price with backward compatibility fallback
+                const item = this.itemsCache.find(i => i.id === t.itemId);
+                const cost = t.cost !== undefined ? t.cost : (item ? (item.cost || 0) : 0);
+                const price = t.price !== undefined ? t.price : (item ? (item.price || 0) : 0);
+                const qty = t.type === 'WALLETADJ' ? 0 : parseInt(t.qty || 0);
 
-            // Calculate profit only for OUT transactions
-            let profitText = '-';
-            let profitClass = '';
+                // Calculate profit only for OUT transactions
+                let profitText = '-';
+                let profitClass = '';
+                let displayCost = cost;
+                let displayPrice = price;
 
-            if (t.type === 'OUT') {
-                const profit = (price - cost) * parseInt(t.qty);
-                profitText = `Rp ${this.formatRp(profit)}`;
-                profitClass = profit >= 0 ? 'text-green-600 font-bold' : 'text-danger font-bold';
+                if (t.type === 'OUT') {
+                    const profit = (price - cost) * qty;
+                    profitText = `Rp ${this.formatRp(profit)}`;
+                    profitClass = profit >= 0 ? 'text-green-600 font-bold' : 'text-danger font-bold';
+                } else if (t.type === 'WALLETADJ') {
+                    displayCost = 0;
+                    displayPrice = parseInt(t.price ?? t.walletDelta ?? 0);
+                }
+
+                const dateObj = t.date ? new Date(t.date) : new Date();
+                const dateStr = isNaN(dateObj) ? '-' : dateObj.toLocaleString('id-ID');
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="font-mono text-xs">${(t.id || '').substring(0, 8)}</td>
+                    <td>${dateStr}</td>
+                    <td><span class="${badgeClass}">${displayType}</span></td>
+                    <td>${t.itemName || '-'} <br><span class="text-xs text-muted font-mono">${t.itemId || '-'}</span></td>
+                    <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : (t.type === 'WALLETADJ' ? 'text-muted' : 'text-danger')}">${t.type === 'WALLETADJ' ? '-' : qty}</td>
+                    <td>Rp ${this.formatRp(displayCost)}</td>
+                    <td>Rp ${this.formatRp(displayPrice)}</td>
+                    <td class="${profitClass}">${profitText}</td>
+                    <td class="text-sm">${t.note || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            } catch (err) {
+                console.error('Error rendering row', t, err);
             }
-
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="font-mono text-xs">${(t.id || '').substring(0, 8)}</td>
-                <td>${new Date(t.date).toLocaleString('id-ID')}</td>
-                <td><span class="${badgeClass}">${t.type}</span></td>
-                <td>${t.itemName} <br><span class="text-xs text-muted font-mono">${t.itemId}</span></td>
-                <td class="font-bold ${t.type === 'IN' ? 'text-green-600' : 'text-danger'}">${t.qty}</td>
-                <td>Rp ${this.formatRp(cost)}</td>
-                <td>Rp ${this.formatRp(price)}</td>
-                <td class="${profitClass}">${profitText}</td>
-                <td class="text-sm">${t.note || '-'}</td>
-            `;
-            tbody.appendChild(tr);
         });
     },
 

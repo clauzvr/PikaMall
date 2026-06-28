@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pikamall-v1';
+const CACHE_NAME = 'pikamall-v2';
 const STATIC_ASSETS = [
     '/',
     '/index.html',
