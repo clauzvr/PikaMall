@@ -332,6 +332,18 @@ const app = {
     },
 
     setupForms: function () {
+        // Setup Currency Input Formatting
+        document.querySelectorAll('.currency-input').forEach(input => {
+            input.addEventListener('input', (e) => {
+                let value = e.target.value.replace(/\D/g, '');
+                if (value !== '') {
+                    e.target.value = new Intl.NumberFormat('id-ID').format(parseInt(value, 10));
+                } else {
+                    e.target.value = '';
+                }
+            });
+        });
+
         // Add Item Form
         document.getElementById('form-add-item').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -340,8 +352,8 @@ const app = {
             btn.textContent = "Menyimpan...";
 
             const name = document.getElementById('input-item-name').value.trim();
-            const cost = document.getElementById('input-item-cost').value;
-            const price = document.getElementById('input-item-price').value;
+            const cost = document.getElementById('input-item-cost').value.replace(/\./g, '');
+            const price = document.getElementById('input-item-price').value.replace(/\./g, '');
 
             // Validation: Nama barang harus unik
             const isNameExists = this.itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase());
@@ -385,8 +397,8 @@ const app = {
             e.preventDefault();
             const id = document.getElementById('edit-item-id').value;
             const name = document.getElementById('edit-item-name').value.trim();
-            const cost = document.getElementById('edit-item-cost').value;
-            const price = document.getElementById('edit-item-price').value;
+            const cost = document.getElementById('edit-item-cost').value.replace(/\./g, '');
+            const price = document.getElementById('edit-item-price').value.replace(/\./g, '');
 
             // Validation: Nama barang harus unik
             const isNameExists = this.itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase() && item.id !== id);
@@ -521,9 +533,8 @@ const app = {
                 const batch = this.db.batch();
 
                 // Update wallet balance
-                const modalMasuk = parseInt(
-                    document.getElementById('input-new-balance').value || 0
-                );
+                const modalMasukStr = document.getElementById('input-new-balance').value || '0';
+                const modalMasuk = parseInt(modalMasukStr.replace(/\./g, ''), 10);
 
                 const saldoBaru = this.balanceCache + modalMasuk;
                 const walletRef = this.db.collection('settings').doc('wallet');
