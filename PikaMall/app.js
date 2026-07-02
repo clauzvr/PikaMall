@@ -352,8 +352,8 @@ const app = {
             btn.textContent = "Menyimpan...";
 
             const name = document.getElementById('input-item-name').value.trim();
-            const cost = document.getElementById('input-item-cost').value.replace(/\./g, '');
-            const price = document.getElementById('input-item-price').value.replace(/\./g, '');
+            const cost = document.getElementById('input-item-cost').value.replace(/\D/g, '');
+            const price = document.getElementById('input-item-price').value.replace(/\D/g, '');
 
             // Validation: Nama barang harus unik
             const isNameExists = this.itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase());
@@ -385,7 +385,7 @@ const app = {
                 this.loadItems();
             } catch (error) {
                 console.error(error);
-                alert("Gagal menyimpan data");
+                alert("Gagal menyimpan data: " + error.message);
             } finally {
                 btn.disabled = false;
                 btn.textContent = "Simpan";
@@ -397,8 +397,8 @@ const app = {
             e.preventDefault();
             const id = document.getElementById('edit-item-id').value;
             const name = document.getElementById('edit-item-name').value.trim();
-            const cost = document.getElementById('edit-item-cost').value.replace(/\./g, '');
-            const price = document.getElementById('edit-item-price').value.replace(/\./g, '');
+            const cost = document.getElementById('edit-item-cost').value.replace(/\D/g, '');
+            const price = document.getElementById('edit-item-price').value.replace(/\D/g, '');
 
             // Validation: Nama barang harus unik
             const isNameExists = this.itemsCache.some(item => item.name.toLowerCase() === name.toLowerCase() && item.id !== id);
@@ -418,7 +418,7 @@ const app = {
                 this.loadItems();
             } catch (error) {
                 console.error(error);
-                alert("Gagal update data");
+                alert("Gagal update data: " + error.message);
             }
         });
 
@@ -534,7 +534,7 @@ const app = {
 
                 // Update wallet balance
                 const modalMasukStr = document.getElementById('input-new-balance').value || '0';
-                const modalMasuk = parseInt(modalMasukStr.replace(/\./g, ''), 10);
+                const modalMasuk = parseInt(modalMasukStr.replace(/\D/g, ''), 10);
 
                 const saldoBaru = this.balanceCache + modalMasuk;
                 const walletRef = this.db.collection('settings').doc('wallet');
@@ -589,8 +589,9 @@ const app = {
                 this.showToast("Barang dihapus");
                 this.closeModal('modal-edit-item');
                 this.loadItems();
-            } catch (e) {
-                alert("Gagal menghapus");
+            } catch (error) {
+                alert("Gagal menghapus: " + error.message);
+                console.error(error);
             }
         }
     },
@@ -722,9 +723,9 @@ const app = {
             item.stock = newStock;
 
             this.showToast(`Transaksi berhasil: ${type} ${qty} ${item.name}`);
-        } catch (e) {
-            console.error(e);
-            alert("Gagal memproses transaksi");
+        } catch (error) {
+            alert("Gagal memproses transaksi: " + error.message);
+            console.error(error);
         }
     },
 
@@ -1086,9 +1087,9 @@ const app = {
             document.body.removeChild(link);
 
             this.showToast("CSV Berhasil di-download");
-        } catch (e) {
-            console.error(e);
-            alert("Gagal export CSV");
+        } catch (error) {
+            alert("Gagal export CSV: " + error.message);
+            console.error(error);
         }
     },
 
@@ -1141,9 +1142,9 @@ const app = {
             this.showToast("Buku berhasil ditutup. Saldo dipindahkan, riwayat dikosongkan.");
             this.closeModal('modal-tutup-buku');
             this.loadReports();
-        } catch (e) {
-            console.error(e);
-            alert("Gagal melakukan tutup buku");
+        } catch (error) {
+            alert("Gagal melakukan tutup buku: " + error.message);
+            console.error(error);
         }
     },
 
