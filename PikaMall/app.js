@@ -918,8 +918,8 @@ const app = {
             // Barcode height: GS h 80
             buffer.push(0x1D, 0x68, 0x50);
 
-            // Barcode width: GS w 2
-            buffer.push(0x1D, 0x77, 0x02);
+            // Barcode width: GS w 3 (lebih tebal = lebih hitam, lebih mudah dibaca scanner)
+            buffer.push(0x1D, 0x77, 0x03);
 
             // Disable HRI characters (we print ID manually): GS H 0
             buffer.push(0x1D, 0x48, 0x00);
@@ -937,15 +937,17 @@ const app = {
             buffer.push(...encoder.encode(textFooter));
 
             // Convert to Uint8Array and chunk it
-            // Cheap BLE printers often drop packets if sent too fast or if > 20 bytes on WriteWithoutResponse
+            // Chunk 128 bytes: cukup besar agar printer tidak "berhenti" antar paket,
+            // tapi masih aman untuk BLE MTU standar (default 23 bytes ATT → negotiable ~128-512)
+            // Delay 50ms memberi waktu printer flush buffer sebelum paket berikutnya
             const data = new Uint8Array(buffer);
-            const chunkSize = 20;
+            const chunkSize = 128;
 
             for (let i = 0; i < data.length; i += chunkSize) {
                 const chunk = data.slice(i, i + chunkSize);
                 await characteristic.writeValue(chunk);
-                // Wait 30ms between chunks to prevent buffer overflow in cheap printers
-                await new Promise(resolve => setTimeout(resolve, 30));
+                // 50ms delay: cukup longgar untuk printer thermal murah
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
 
             this.showToast("Berhasil mencetak");
