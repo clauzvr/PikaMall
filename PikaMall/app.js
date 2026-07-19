@@ -924,10 +924,13 @@ const app = {
             // Disable HRI characters (we print ID manually): GS H 0
             buffer.push(0x1D, 0x48, 0x00);
 
-            // Print barcode CODE39 (Format 1): GS k 4 [data] NUL
-            buffer.push(0x1D, 0x6B, 0x04);
-            buffer.push(...encoder.encode(idText));
-            buffer.push(0x00); // NUL terminator
+            // Print barcode CODE128 (new format): GS k 73 n {B[data]
+            // {B = Code Set B (mendukung semua karakter ASCII termasuk '-')
+            const barcodeData = `{B${idText}`;
+            const barcodeBytes = encoder.encode(barcodeData);
+            buffer.push(0x1D, 0x6B, 0x49); // GS k CODE128
+            buffer.push(barcodeBytes.length); // n = panjang data
+            buffer.push(...barcodeBytes);
 
             // Text Footer and line feeds
             let textFooter = `\nID: ${idText}\n\n\n`;
