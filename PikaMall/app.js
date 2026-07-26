@@ -1,6 +1,11 @@
 // Initialize Lucide Icons
 lucide.createIcons();
 
+const ALLOWED_EMAILS = [
+    'leonardyprasetyo16@gmail.com',
+    'evelin230601@gmail.com'
+];
+
 const app = {
     db: null,
     html5QrcodeScanner: null,
@@ -91,11 +96,6 @@ const app = {
             this.auth = firebase.auth();
             console.log("Firebase initialized");
 
-            const ALLOWED_EMAILS = [
-                'leonardyprasetyo16@gmail.com',
-                'evelin230601@gmail.com'
-            ];
-
             // Listen for auth state changes
             this.auth.onAuthStateChanged((user) => {
                 if (user) {
@@ -138,7 +138,14 @@ const app = {
             provider.setCustomParameters({
                 prompt: 'select_account'
             });
-            await this.auth.signInWithPopup(provider);
+            const credential = await this.auth.signInWithPopup(provider);
+            
+            if (!ALLOWED_EMAILS.includes(credential.user.email)) {
+                // Jangan tampilkan toast 'Berhasil' jika email salah. 
+                // Proses sign-out dan alert sudah ditangani oleh onAuthStateChanged.
+                return; 
+            }
+
             this.showToast("Berhasil Login!");
         } catch (error) {
             console.error(error);
