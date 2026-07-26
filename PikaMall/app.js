@@ -91,9 +91,20 @@ const app = {
             this.auth = firebase.auth();
             console.log("Firebase initialized");
 
+            const ALLOWED_EMAILS = [
+                'leonardyprasetyo16@gmail.com',
+                'evelin230601@gmail.com'
+            ];
+
             // Listen for auth state changes
             this.auth.onAuthStateChanged((user) => {
                 if (user) {
+                    if (!ALLOWED_EMAILS.includes(user.email)) {
+                        this.auth.signOut();
+                        alert(`Akses Ditolak: Akun ${user.email} tidak diizinkan masuk ke sistem ini.`);
+                        return;
+                    }
+
                     // User is signed in
                     document.getElementById('login-container').classList.add('hidden');
                     document.getElementById('app-container').classList.remove('hidden');
@@ -458,14 +469,14 @@ const app = {
         manualInput.addEventListener('input', (e) => {
             const val = e.target.value.toLowerCase().trim();
             autocompleteList.innerHTML = '';
-            
+
             if (!val) {
                 autocompleteList.classList.add('hidden');
                 return;
             }
 
-            const matches = this.itemsCache.filter(item => 
-                item.name.toLowerCase().includes(val) || 
+            const matches = this.itemsCache.filter(item =>
+                item.name.toLowerCase().includes(val) ||
                 item.id.toLowerCase().includes(val)
             ).slice(0, 10); // Limit to 10 results
 
@@ -477,7 +488,7 @@ const app = {
                         <div class="item-name">${item.name}</div>
                         <div class="item-barcode"><i data-lucide="barcode" style="width:12px;height:12px;display:inline-block;margin-right:4px;"></i>${item.id}</div>
                     `;
-                    
+
                     div.addEventListener('click', () => {
                         manualInput.value = item.id;
                         autocompleteList.classList.add('hidden');
@@ -488,7 +499,7 @@ const app = {
                     autocompleteList.appendChild(div);
                 });
                 // Re-initialize lucide icons for new elements
-                if(window.lucide) {
+                if (window.lucide) {
                     window.lucide.createIcons();
                 }
             } else {
@@ -502,13 +513,13 @@ const app = {
             const barcode = manualInput.value.trim();
             if (barcode) {
                 // If the user typed a name exactly matching an item, find its barcode
-                const exactMatch = this.itemsCache.find(item => 
-                    item.id.toLowerCase() === barcode.toLowerCase() || 
+                const exactMatch = this.itemsCache.find(item =>
+                    item.id.toLowerCase() === barcode.toLowerCase() ||
                     item.name.toLowerCase() === barcode.toLowerCase()
                 );
-                
+
                 const finalBarcode = exactMatch ? exactMatch.id : barcode;
-                
+
                 this.handleBarcodeScan(finalBarcode);
                 manualInput.value = '';
                 autocompleteList.classList.add('hidden');
@@ -1106,17 +1117,17 @@ const app = {
             let totalIncome = 0;
             let totalExpense = 0;
             let totalWalletAdj = 0;
-            
+
             this.transactionsCache.forEach(t => {
                 const qty = parseInt(t.qty || 0);
                 const price = parseInt(t.price || 0);
                 const cost = parseInt(t.cost || 0);
-                
+
                 if (t.type === 'OUT') totalIncome += price * qty;
                 else if (t.type === 'IN') totalExpense += cost * qty;
                 else if (t.type === 'WALLETADJ') totalWalletAdj += parseInt(t.price ?? t.walletDelta ?? 0);
             });
-            
+
             const currentBalance = totalWalletAdj + totalIncome - totalExpense;
 
             // Delete all transactions (simplified batch delete)
@@ -1126,7 +1137,7 @@ const app = {
 
             // Add the rollover transaction
             const batch = this.db.batch();
-            
+
             const walletRef = this.db.collection('settings').doc('wallet');
             batch.set(walletRef, { balance: currentBalance });
 
